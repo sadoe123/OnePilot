@@ -1,0 +1,177 @@
+services:
+  # ======================================================================
+  # PostgreSQL - Base de données des métadonnées OnePilot
+  # ======================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: onepilot-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: onepilot
+      POSTGRES_PASSWORD: changeme_in_production
+      POSTGRES_DB: onepilot_metadata
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onepilot -d onepilot_metadata"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - onepilot-network
+
+  # ======================================================================
+  # PgAdmin - Interface web pour PostgreSQL (optionnel, debug)
+  # Lancer avec : docker-compose --profile debug up -d
+  # Accès : http://localhost:5050
+  # ======================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: onepilot-pgadmin
+    restart: unless-stopped
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@onepilot.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+
+    ports:
+      - "5050:80"
+
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+    depends_on:
+      - postgres
+
+    networks:
+      - onepilot-network
+
+    profiles:
+      - debug
+
+  # ======================================================================
+  # Redis - Cache et gestion de sessions
+  # ======================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: onepilot-redis
+    restart: unless-stopped
+
+    command: redis-server --appendonly yes
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+    networks:
+      - onepilot-network
+
+  # ======================================================================
+  # Ollama - DESACTIVE (déjà installé nativement sur Windows)
+  # Accessible sur http://localhost:11434
+  # Modèle disponible : mistral:latest
+  # ======================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: onepilot-ollama
+    restart: unless-stopped
+    profiles:
+      - disabled
+
+  # ======================================================================
+  # Redis Commander - Interface web pour Redis (optionnel, debug)
+  # Lancer avec : docker-compose --profile debug up -d
+  # Accès : http://localhost:8081
+  # ======================================================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: onepilot-redis-commander
+    restart: unless-stopped
+
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+
+    ports:
+      - "8081:8081"
+
+    depends_on:
+      - redis
+
+    networks:
+      - onepilot-network
+
+    profiles:
+      - debug
+
+# ========================================================================
+# Volumes persistants
+# ========================================================================
+volumes:
+  postgres_data:
+    driver: local
+    name: onepilot_postgres_data
+
+  pgadmin_data:
+    driver: local
+    name: onepilot_pgadmin_data
+
+  redis_data:
+    driver: local
+    name: onepilot_redis_data
+
+# ========================================================================
+# Réseau interne
+# ========================================================================
+networks:
+  onepilot-network:
+    driver: bridge
+    name: onepilot_network
+
+# ========================================================================
+# COMMANDES UTILES
+# ========================================================================
+#
+# Démarrer les services (postgres + redis):
+#   docker-compose up -d
+#
+# Démarrer avec debug (+ pgadmin + redis-commander):
+#   docker-compose --profile debug up -d
+#
+# Voir l'état des services:
+#   docker-compose ps
+#
+# Voir les logs:
+#   docker-compose logs -f
+#
+# Arrêter les services:
+#   docker-compose down
+#
+# Se connecter à PostgreSQL:
+#   docker exec -it onepilot-postgres psql -U onepilot -d onepilot_metadata
+#
+# Tester Redis:
+#   docker exec -it onepilot-redis redis-cli ping
+#
+# Tester Ollama (natif Windows):
+#   curl http://localhost:11434/api/tags
+#
+# ========================================================================
