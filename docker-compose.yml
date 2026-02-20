@@ -30,34 +30,63 @@ services:
       - onepilot-network
 
   # ======================================================================
-  # PgAdmin - Interface web pour PostgreSQL (optionnel, debug)
-  # Lancer avec : docker-compose --profile debug up -d
-  # Accès : http://localhost:5050
+  # MySQL - Base de données de test pour connecteur MySQL
   # ======================================================================
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: onepilot-pgadmin
+  mysql:
+    image: mysql:8.0
+    container_name: onepilot-mysql
     restart: unless-stopped
-
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@onepilot.local
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-
+    
     ports:
-      - "5050:80"
-
+      - "3306:3306"
+    
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: onepilot
+      MYSQL_PASSWORD: onepilot_password
+    
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
-
-    depends_on:
-      - postgres
-
+      - mysql_data:/var/lib/mysql
+    
     networks:
       - onepilot-network
+    
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    profiles:
-      - debug
+  # ======================================================================
+  # MSSQL - Microsoft SQL Server pour connecteur MSSQL
+  # ⚠️ Nécessite au moins 2GB de RAM disponible
+  # ======================================================================
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: onepilot-mssql
+    restart: unless-stopped
+    
+    ports:
+      - "1433:1433"
+    
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "OnePilot@2026"  # Doit contenir: majuscule, minuscule, chiffre, caractère spécial
+      MSSQL_PID: "Express"
+    
+    volumes:
+      - mssql_data:/var/opt/mssql
+    
+    networks:
+      - onepilot-network
+    
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "OnePilot@2026", "-Q", "SELECT 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ======================================================================
   # Redis - Cache et gestion de sessions
@@ -98,6 +127,36 @@ services:
       - disabled
 
   # ======================================================================
+  # PgAdmin - Interface web pour PostgreSQL (optionnel, debug)
+  # Lancer avec : docker-compose --profile debug up -d
+  # Accès : http://localhost:5050
+  # ======================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: onepilot-pgadmin
+    restart: unless-stopped
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@onepilot.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+
+    ports:
+      - "5050:80"
+
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+    depends_on:
+      - postgres
+
+    networks:
+      - onepilot-network
+
+    profiles:
+      - debug
+
+  # ======================================================================
   # Redis Commander - Interface web pour Redis (optionnel, debug)
   # Lancer avec : docker-compose --profile debug up -d
   # Accès : http://localhost:8081
@@ -130,6 +189,14 @@ volumes:
     driver: local
     name: onepilot_postgres_data
 
+  mysql_data:
+    driver: local
+    name: onepilot_mysql_data
+
+  mssql_data:
+    driver: local
+    name: onepilot_mssql_data
+
   pgadmin_data:
     driver: local
     name: onepilot_pgadmin_data
@@ -150,7 +217,7 @@ networks:
 # COMMANDES UTILES
 # ========================================================================
 #
-# Démarrer les services (postgres + redis):
+# Démarrer TOUS les services (postgres + mysql + mssql + redis):
 #   docker-compose up -d
 #
 # Démarrer avec debug (+ pgadmin + redis-commander):
@@ -167,6 +234,13 @@ networks:
 #
 # Se connecter à PostgreSQL:
 #   docker exec -it onepilot-postgres psql -U onepilot -d onepilot_metadata
+#
+# Se connecter à MySQL:
+#   docker exec -it onepilot-mysql mysql -u onepilot -p test_db
+#   (mot de passe: onepilot_password)
+#
+# Se connecter à MSSQL:
+#   docker exec -it onepilot-mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P OnePilot@2026
 #
 # Tester Redis:
 #   docker exec -it onepilot-redis redis-cli ping
